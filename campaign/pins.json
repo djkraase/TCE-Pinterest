@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "channel": "pinterest",
+  "pins": [
+    {
+      "id": "pin-01-handoff",
+      "source_id": "kg-diagnostic",
+      "search_intent": "handoff-preserve-decisions",
+      "asset": "tce_pin_01_publish.jpg",
+      "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": true,
+      "buffer_post_id": "6ae9060f3b6f22c15ed12663",
+      "status": "sent"
+    },
+    {
+      "id": "pin-02-revisited-decisions",
+      "source_id": "kg-diagnostic",
+      "search_intent": "repeated-decisions",
+      "asset": "tce_pin_02_publish.jpg",
+      "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "status": "asset-pending"
+    },
+    {
+      "id": "pin-03-lost-context",
+      "source_id": "kg-diagnostic",
+      "search_intent": "lost-context",
+      "asset": "tce_pin_03_publish.jpg",
+      "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "status": "asset-pending"
+    }
+  ]
+}
