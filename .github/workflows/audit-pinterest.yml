@@ -1,0 +1,20 @@
+name: Audit Pinterest release readiness
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'campaign/pins.json'
+      - 'assets/**'
+      - 'scripts/audit_pins.py'
+      - '.github/workflows/audit-pinterest.yml'
+  schedule:
+    - cron: '15 13 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/audit_pins.py
