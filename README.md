@@ -1,1 +1,1 @@
-# TCE-Pinterest
+# tce-pinterest-assets
