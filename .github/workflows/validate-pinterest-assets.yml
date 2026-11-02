@@ -1,0 +1,58 @@
+name: Validate Pinterest image assets
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/**'
+      - '.github/workflows/validate-pinterest-assets.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check publishable images
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct, sys
+          assets=Path('assets')
+          errors=[]
+          for p in sorted(assets.iterdir()):
+              if not p.is_file() or p.suffix.lower() not in ('.jpg','.jpeg','.png'):
+                  continue
+              if p.name.startswith('delivery-test'):
+                  continue
+              b=p.read_bytes()
+              if not b:
+                  errors.append(f'{p}: empty'); continue
+              if p.suffix.lower()=='.png':
+                  if not b.startswith(b'\x89PNG\r\n\x1a\n') or len(b)<24:
+                      errors.append(f'{p}: invalid PNG'); continue
+                  w,h=struct.unpack('>II',b[16:24])
+              else:
+                  if not b.startswith(b'\xff\xd8'):
+                      errors.append(f'{p}: invalid JPEG'); continue
+                  w=h=None
+                  i=2
+                  while i<len(b)-9:
+                      if b[i]!=255: i+=1; continue
+                      marker=b[i+1]; i+=2
+                      if marker in (0xD8,0xD9): continue
+                      if i+2>len(b): break
+                      seg=int.from_bytes(b[i:i+2],'big')
+                      if marker in (0xC0,0xC1,0xC2,0xC3,0xC5,0xC6,0xC7,0xC9,0xCA,0xCB,0xCD,0xCE,0xCF):
+                          h=int.from_bytes(b[i+3:i+5],'big');w=int.from_bytes(b[i+5:i+7],'big');break
+                      i+=seg
+                  if w is None: errors.append(f'{p}: dimensions unavailable'); continue
+              if w<500 or h<750 or h<=w:
+                  errors.append(f'{p}: invalid vertical dimensions {w}x{h}')
+              if len(b)>5_000_000:
+                  errors.append(f'{p}: exceeds 5 MB')
+              print(f'{p}: {w}x{h}, {len(b)} bytes')
+          if errors:
+              print('\n'.join(errors),file=sys.stderr)
+              sys.exit(1)
+          PY
