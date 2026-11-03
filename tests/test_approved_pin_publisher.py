@@ -31,14 +31,15 @@ class API:
         self.crash = False
         self.read_crash = False
     def verify(self):
-        pass
+        return {'timezone': p.CHANNEL_TIMEZONE, 'postingSchedule': [
+            {'day': day, 'times': ['15:00', '18:00'], 'paused': False} for day in p.WEEKDAYS]}
     def posts(self):
         return copy.deepcopy(self.items)
     def create(self, payload):
         self.calls += 1
         m = payload['metadata']['pinterest']
         self.items.append({'id': 'new-post', 'channelId': p.CHANNEL, 'status': 'scheduled',
-            'text': payload['text'], 'metadata': {'title': m['title'], 'url': m['url'],
+            'dueAt': payload.get('dueAt'), 'text': payload['text'], 'metadata': {'title': m['title'], 'url': m['url'],
             'board': {'serviceId': m['boardServiceId']}}, 'assets': [{'source': payload['assets'][0]['image']['url'], 'image': {'altText': payload['assets'][0]['image']['metadata']['altText']}}]})
         if self.crash:
             raise p.Blocked('ambiguous create')
@@ -76,7 +77,8 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaises(p.Blocked): self.run_publish()
         self.assertEqual(self.api.calls, 0)
     def test_nine_allows_one(self):
-        self.api.items = [{'id': str(i), 'status': 'scheduled'} for i in range(9)]
+        self.api.items = [{'id': str(i), 'channelId': p.CHANNEL, 'status': 'scheduled',
+            'dueAt': (p.utc_now() + p.timedelta(days=i+1)).isoformat()} for i in range(9)]
         self.run_publish()
         self.assertEqual(self.api.calls, 1)
     def test_missing_approval(self):
@@ -185,7 +187,7 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(result['mode'], 'read_only_audit')
         self.assertEqual(result['available_slots'], 10)
         self.assertTrue(result['pins'][0]['publication_verified'])
-        self.assertEqual([x['action'] for x in result['pins'][1:]], ['ready_to_schedule', 'ready_to_schedule'])
+        self.assertEqual([x['action'] for x in result['pins'][1:]], ['content_checks_passed_schedule_not_checked', 'content_checks_passed_schedule_not_checked'])
         self.assertEqual(self.api.calls, 0)
     def test_replenish_sequential_and_skips_unapproved(self):
         pins = [dict(self.pin, editorial_approved=False), self.pin, dict(self.pin, id='pin-next')]
@@ -237,7 +239,10 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.ledger.state['records'], {})
     def test_recorded_sent_refresh_and_repeat_are_create_free(self):
         self.run_publish()
-        self.api.items[0].update(status='sent', sentAt='2026-11-03T01:40:00Z', externalLink='https://www.pinterest.com/pin/123')
+        self.api.items[0].update(status='sent', sentAt=self.api.items[0]['dueAt'], externalLink='https://www.pinterest.com/pin/123')
+        clock = patch.object(p, 'utc_now', return_value=p.timestamp(self.api.items[0]['dueAt']))
+        clock.start()
+        self.addCleanup(clock.stop)
         before = self.ledger.version
         result = self.run_publish()
         self.assertEqual(result['ledger_refresh'], 'updated')

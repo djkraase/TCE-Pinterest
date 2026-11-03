@@ -3,6 +3,8 @@
 import argparse
 import base64
 import copy
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -27,6 +29,10 @@ POST_STATUSES = {'draft', 'error', 'needs_approval', 'scheduled', 'sending', 'se
 REPO = 'djkraase/TCE-Pinterest'
 STATE_BRANCH = 'pinterest-state'
 STATE_PATH = 'publisher-ledger.json'
+CHANNEL_TIMEZONE = 'America/New_York'
+LOCAL_ZONE = ZoneInfo(CHANNEL_TIMEZONE)
+WEEKDAYS = ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun')
+MIN_SCHEDULE_LEAD = timedelta(minutes=5)
 POST_FIELDS = '''id channelId status text dueAt sentAt externalLink
 assets { ... on ImageAsset { source image { altText } } }
 metadata { ... on PinterestPostMetadata { title url board { serviceId } } }'''
@@ -85,13 +91,15 @@ class Buffer:
     def verify(self):
         data = self.query('''query { account { organizations { id } }
         channel(input: {id: "%s"}) { id organizationId service isDisconnected isLocked
-        isQueuePaused metadata { ... on PinterestMetadata { boards { serviceId } } } } }''' % CHANNEL)
+        isQueuePaused timezone postingSchedule { day times paused } metadata { ... on PinterestMetadata { boards { serviceId } } } } }''' % CHANNEL)
         c = data['channel']
         if (ORG not in [o['id'] for o in data['account']['organizations']]
                 or c['id'] != CHANNEL or c['organizationId'] != ORG or c['service'] != 'pinterest'
                 or c['isDisconnected'] or c['isLocked'] or c['isQueuePaused']
                 or BOARD not in [b['serviceId'] for b in c['metadata']['boards']]):
             raise Blocked('channel/account/board preflight failed')
+        validate_schedule(c)
+        return c
 
     def posts(self):
         # All statuses, no date filter: drafts/errors also suppress duplicates.
@@ -341,6 +349,150 @@ def outcome(post):
             'publication_verified': published, 'verification_basis': 'Buffer status + sentAt + Pinterest URL; not independent page fetch'}
 
 
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def timestamp(value):
+    # Reject naive dates, missing timestamps and non-RFC3339 variants.
+    if not isinstance(value, str) or not re.fullmatch(
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})', value):
+        raise Blocked('missing or invalid publication timestamp')
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(timezone.utc)
+    except ValueError:
+        raise Blocked('invalid publication timestamp') from None
+
+
+def validate_schedule(channel):
+    if not isinstance(channel, dict) or channel.get('timezone') != CHANNEL_TIMEZONE:
+        raise Blocked('channel timezone changed or unavailable')
+    schedule = channel.get('postingSchedule')
+    if not isinstance(schedule, list) or not schedule:
+        raise Blocked('channel posting schedule unavailable')
+    result = {}
+    for day in schedule:
+        name, times, paused = day.get('day'), day.get('times'), day.get('paused')
+        if (name not in WEEKDAYS or name in result or type(paused) is not bool
+                or not isinstance(times, list) or any(not isinstance(t, str) or not re.fullmatch(
+                    r'(?:[01]\d|2[0-3]):[0-5]\d', t) for t in times)):
+            raise Blocked('invalid channel posting schedule')
+        result[name] = [] if paused else sorted(set(times))
+    if not any(result.values()):
+        raise Blocked('no active channel posting slots')
+    return result
+
+
+def publication_dates(post, now):
+    status = post.get('status')
+    if status not in POST_STATUSES:
+        raise Blocked('unknown publication status')
+    dates = set()
+    if status == 'sent':
+        sent = timestamp(post.get('sentAt'))
+        if sent > now:
+            raise Blocked('sent timestamp is in the future')
+        dates.add(sent.astimezone(LOCAL_ZONE).date())
+    elif status in ('scheduled', 'sending'):
+        due = timestamp(post.get('dueAt'))
+        # Any overdue scheduled/sending item can publish on an unknown day.
+        # Wait for a confirmed outcome rather than guess its publication date.
+        if (due <= now or (status == 'sending' and
+                due.astimezone(LOCAL_ZONE).date() != now.astimezone(LOCAL_ZONE).date())):
+            raise Blocked('stale pending publication; reconcile before scheduling')
+        dates.add(due.astimezone(LOCAL_ZONE).date())
+    return dates
+
+
+def occupied_dates(posts, records, now):
+    occupied, remote = set(), {}
+    for post in posts:
+        if post.get('channelId') != CHANNEL or not post.get('id') or post['id'] in remote:
+            raise Blocked('invalid or duplicate remote post identity')
+        remote[post['id']] = post
+        occupied.update(publication_dates(post, now))
+    for record in records.values():
+        if record.get('state') != 'recorded':
+            raise Blocked('unresolved durable intent; reconcile before scheduling')
+        reservation = record.get('schedule')
+        if reservation is not None:
+            occupied.add(reservation_date(reservation))
+        post = remote.get(record.get('buffer_post_id'))
+        if post:
+            # Keep original reservations and historical outcome dates, even if
+            # somebody moved the post. Current remote outcome supersedes stale
+            # ledger status, but never erases a reserved date.
+            if record.get('sent_at'):
+                occupied.update(publication_dates({'status': 'sent', 'sentAt': record['sent_at']}, now))
+            if record.get('due_at'):
+                occupied.add(timestamp(record['due_at']).astimezone(LOCAL_ZONE).date())
+        elif record.get('status') == 'sent':
+            occupied.update(publication_dates({'status': 'sent', 'sentAt': record.get('sent_at')}, now))
+        else:
+            raise Blocked('durable post missing from live history; reconcile before scheduling')
+    return occupied
+
+
+def reservation_date(reservation):
+    if (not isinstance(reservation, dict) or reservation.get('timezone') != CHANNEL_TIMEZONE
+            or reservation.get('policy') != 'one_pin_per_local_day_v1'):
+        raise Blocked('invalid durable schedule reservation')
+    day = timestamp(reservation.get('due_at')).astimezone(LOCAL_ZONE).date()
+    if reservation.get('local_date') != day.isoformat():
+        raise Blocked('durable schedule date mismatch')
+    return day
+
+
+def choose_schedule(channel, occupied, now):
+    schedule = validate_schedule(channel)
+    first = now.astimezone(LOCAL_ZONE).date()
+    for offset in range(366):
+        day = first + timedelta(days=offset)
+        if day in occupied:
+            continue
+        for slot in schedule.get(WEEKDAYS[day.weekday()], []):
+            wall = datetime.fromisoformat(day.isoformat() + 'T' + slot)
+            local = wall.replace(tzinfo=LOCAL_ZONE, fold=0)
+            due = local.astimezone(timezone.utc)
+            # Skip nonexistent spring-forward times, choose first fold in fall.
+            if due.astimezone(LOCAL_ZONE).replace(tzinfo=None) != wall:
+                continue
+            if due > now + MIN_SCHEDULE_LEAD:
+                return {'policy': 'one_pin_per_local_day_v1', 'timezone': CHANNEL_TIMEZONE,
+                        'local_date': day.isoformat(), 'due_at': due.isoformat().replace('+00:00', 'Z')}
+    raise Blocked('no free existing posting slot within safe planning horizon')
+
+
+def scheduled_payload(payload, reservation):
+    reservation_date(reservation)
+    result = copy.deepcopy(payload)
+    # Buffer reference: CreatePostInput.dueAt, ShareMode.customScheduled.
+    # schedulingType remains automatic (delivery method, not queue placement).
+    result.update(mode='customScheduled', dueAt=reservation['due_at'])
+    return result
+
+
+def record_payload_matches(record, payload):
+    if record.get('payload_sha256') != digest(payload):
+        return False
+    if 'schedule' not in record:
+        return True  # Legacy records and hashes are not migrated or rewritten.
+    return record.get('scheduled_payload_sha256') == digest(scheduled_payload(payload, record['schedule']))
+
+
+def verify_reserved_post(post, record):
+    if 'schedule' not in record:
+        return
+    publication_dates(post, utc_now())  # Reuse the fail-closed temporal policy.
+    reserved = timestamp(record['schedule']['due_at'])
+    if post.get('status') not in ('scheduled', 'sending', 'sent') or timestamp(post.get('dueAt')) != reserved:
+        raise Blocked('remote scheduling differs from durable reservation; retain intent')
+    if post['status'] == 'sent':
+        sent = timestamp(post.get('sentAt'))
+        if sent.astimezone(LOCAL_ZONE).date() != reservation_date(record['schedule']):
+            raise Blocked('publication day differs from reservation; manual review required')
+
+
 def refresh_recorded(pin, payload, duplicates, api, ledger):
     """Refresh confirmed job outcomes only. Never create, claim, or unlock."""
     if len(duplicates) != 1:
@@ -352,7 +504,7 @@ def refresh_recorded(pin, payload, duplicates, api, ledger):
     if not record:
         return 'no_record'
     if (record.get('state') != 'recorded'
-            or record.get('payload_sha256') != digest(payload)
+            or not record_payload_matches(record, payload)
             or record.get('asset_sha256') != pin['asset_sha256']
             or record.get('intent_sha256') != digest([pin['source_id'], pin['search_intent']])
             or record.get('buffer_post_id') != duplicates[0].get('id')
@@ -362,6 +514,7 @@ def refresh_recorded(pin, payload, duplicates, api, ledger):
     if (post.get('id') != record['buffer_post_id'] or post.get('status') not in POST_STATUSES
             or not verified_content(post, payload)):
         return 'review_required'
+    verify_reserved_post(post, record)
     current = outcome(post)
     if all(record.get(key) == value for key, value in current.items()):
         return 'unchanged'
@@ -373,7 +526,7 @@ def refresh_recorded(pin, payload, duplicates, api, ledger):
 
 def publish(pin, api, ledger, execute=False, assets=ROOT / 'assets', url_check=verify_urls):
     payload, body = candidate(pin, assets)
-    api.verify()
+    channel = api.verify()
     posts = api.posts()
     duplicates = [p for p in posts if matches(p, payload) or any(
         a.get('source') == payload['assets'][0]['image']['url'] for a in p.get('assets', []))]
@@ -385,8 +538,8 @@ def publish(pin, api, ledger, execute=False, assets=ROOT / 'assets', url_check=v
     if sum(p['status'] in ('scheduled', 'sending') for p in posts) >= 10:
         raise CapacityDeferred('queue capacity reached')
     url_check(payload, body)
-    if not execute:
-        return {'action': 'dry_run_ready', 'pin_id': pin['id'], 'payload_sha256': digest(payload)}
+    if ledger is None:
+        raise Blocked('durable ledger required for scheduling preview')
     state, sha = ledger.read()
     fingerprints = {'payload_sha256': digest(payload), 'asset_sha256': pin['asset_sha256'],
                     'intent_sha256': digest([pin['source_id'], pin['search_intent']])}
@@ -394,18 +547,32 @@ def publish(pin, api, ledger, execute=False, assets=ROOT / 'assets', url_check=v
             any(record.get(k) == value for k, value in fingerprints.items())
             for record in state['records'].values())):
         raise Blocked('durable claim exists; reconcile, never repeat create')
+    now = utc_now()
+    reservation = choose_schedule(channel, occupied_dates(posts, state['records'], now), now)
+    create_payload = scheduled_payload(payload, reservation)
+    if not execute:
+        return {'action': 'dry_run_ready', 'pin_id': pin['id'], 'payload_sha256': digest(payload),
+                'schedule': reservation, 'scheduled_payload_sha256': digest(create_payload)}
     # Global durable lock coordinates even runners outside workflow concurrency.
     state = copy.deepcopy(state)
     state['lock'] = pin['id']
-    state['records'][pin['id']] = {'state': 'intent', **fingerprints}
+    state['records'][pin['id']] = {'state': 'intent', **fingerprints, 'schedule': reservation,
+                                  'scheduled_payload_sha256': digest(create_payload)}
     sha = ledger.cas(state, sha)  # Must be durable BEFORE create, including crash window.
     posts = api.posts()  # Recheck cap/dedup after owning the lock.
     if any(matches(p, payload) or same_asset(p, payload) for p in posts) or sum(p['status'] in ('scheduled', 'sending') for p in posts) >= 10:
         raise Blocked('remote state changed; intent retained for review')
-    post_id = api.create(payload)  # Exactly one attempt. All failures retain intent/lock.
+    channel_now = api.verify()
+    now = utc_now()
+    other_records = {k: v for k, v in state['records'].items() if k != pin['id']}
+    if (channel_now != channel or reservation_date(reservation) in occupied_dates(posts, other_records, now)
+            or timestamp(reservation['due_at']) <= now + MIN_SCHEDULE_LEAD):
+        raise Blocked('publication date or channel changed; intent retained for review')
+    post_id = api.create(create_payload)  # Exactly one attempt. All failures retain intent/lock.
     post = api.post(post_id)
-    if not verified_content(post, payload):
+    if post.get('id') != post_id or not verified_content(post, payload):
         raise Blocked('created post verification failed; intent retained')
+    verify_reserved_post(post, state['records'][pin['id']])
     result = outcome(post)
     state['records'][pin['id']].update(state='recorded', **result)
     state['lock'] = None
@@ -419,15 +586,16 @@ def reconcile(pin, api, ledger, assets=ROOT / 'assets'):
     api.verify()
     state, sha = ledger.read()
     record = state['records'].get(pin['id'])
-    if not record or record['payload_sha256'] != digest(payload):
+    if not record or not record_payload_matches(record, payload):
         raise Blocked('missing or changed intent; manual review needed')
     posts = api.posts()
     found = [p for p in posts if matches(p, payload)]
     if len(found) != 1:
         raise Blocked('intent unresolved or duplicate matches; keep lock and review manually')
     post = api.post(found[0]['id'])
-    if not verified_content(post, payload):
-        raise Blocked('reconciled post content mismatch; retain lock')
+    if post.get('id') != found[0]['id'] or not verified_content(post, payload):
+        raise Blocked('reconciled post identity/content mismatch; retain lock')
+    verify_reserved_post(post, state['records'][pin['id']])
     result = outcome(post)
     state['records'][pin['id']].update(state='recorded', **result)
     if state['lock'] == pin['id']:
@@ -540,7 +708,7 @@ def main():
                 payload, body = candidate(pin)
                 verify_urls(payload, body)
                 duplicate = any(matches(p, payload) or same_asset(p, payload) for p in posts)
-                report.append({'pin_id': pin['id'], 'action': 'remote_duplicate_no_create' if duplicate else 'ready_to_schedule'})
+                report.append({'pin_id': pin['id'], 'action': 'remote_duplicate_no_create' if duplicate else 'content_checks_passed_schedule_not_checked'})
             except Blocked as e:
                 report.append({'pin_id': pin['id'], 'action': 'blocked', 'reason': str(e)})
         queued = sum(p['status'] in ('scheduled', 'sending') for p in posts)
@@ -559,7 +727,7 @@ def main():
     if len(selected) != 1:
         raise Blocked('select exactly one existing campaign Pin')
     api = Buffer(os.environ.get('BUFFER_API_KEY'))
-    ledger = GitHubLedger(os.environ.get('GITHUB_TOKEN')) if args.mode in ('execute', 'reconcile') else None
+    ledger = GitHubLedger(os.environ.get('GITHUB_TOKEN')) if args.mode in ('execute', 'reconcile', 'check') else None
     if args.mode == 'status':
         post_id = selected[0].get('buffer_post_id')
         if not post_id:
