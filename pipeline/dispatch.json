@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "action": "replenish",
+  "run_id": "tce-pinterest-20261103T021959Z-a41e8b62",
+  "manifest_blob_sha": "6fe776c8f9f227e3137f5b2cc9c6de4754f7f187",
+  "ledger_blob_sha": "37506744a2e73804aa3236494eb623f86387d3bc"
+}
