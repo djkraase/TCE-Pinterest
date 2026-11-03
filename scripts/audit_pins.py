@@ -80,6 +80,7 @@ from html.parser import HTMLParser
 import json
 import re
 import urllib.request
+import urllib.error
 
 ROUTES = [
     ('pin-04-substack-context', 'https://davidkraase.substack.com/p/what-the-context-engine-is-about',
@@ -178,6 +179,8 @@ def probe(pin_id, url, headline, marker):
     except Exception as error:
         result['outcome'] = 'probe_blocked'
         result['error_type'] = type(error).__name__
+        if isinstance(error, urllib.error.HTTPError):
+            result['http_status'] = error.code
     print(json.dumps(result, sort_keys=True))
 
 if __name__ == '__main__':
