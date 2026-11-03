@@ -63,7 +63,14 @@
       "editorial_approved": false,
       "status": "review",
       "creative_tool": "chatgpt-image-generation",
-      "source_type": "published_essay"
+      "source_type": "published_essay",
+      "title": "What Can a Workaround Tell You About a Broken Process?",
+      "text": "A workaround can reveal where the documented process and the actual work diverge. Read The Context Engine's essay on what those detours can teach us about workflow design.",
+      "alt_text": "The Context Engine editorial graphic featuring a flowchart on a sticky note and the headline What Can a Workaround Tell You?",
+      "preview_file": "tce_essay_01_review.png",
+      "visual_concept_approved": true,
+      "approval_note": "Concept approved by user; final wording, source fidelity and image delivery pending",
+      "tracked_destination_url": "https://davidkraase.substack.com/p/what-can-a-workaround-tell-you?utm_source=pinterest&utm_medium=organic_social&utm_campaign=tce_essay_archive&utm_content=essay-01-workaround"
     },
     {
       "id": "essay-02-burnout",
@@ -75,7 +82,14 @@
       "editorial_approved": false,
       "status": "review",
       "creative_tool": "chatgpt-image-generation",
-      "source_type": "published_essay"
+      "source_type": "published_essay",
+      "title": "How We Design Ourselves Into Burnout",
+      "text": "The small decisions that add work deserve examination. Explore how the way we organize work can contribute to overload.",
+      "alt_text": "The Context Engine editorial graphic showing stacked coffee cups and the headline How We Design Ourselves Into Burnout.",
+      "preview_file": "tce_essay_02_review.png",
+      "visual_concept_approved": true,
+      "approval_note": "Concept approved by user; final wording, source fidelity and image delivery pending",
+      "tracked_destination_url": "https://davidkraase.substack.com/p/one-more-thing?utm_source=pinterest&utm_medium=organic_social&utm_campaign=tce_essay_archive&utm_content=essay-02-burnout"
     },
     {
       "id": "essay-03-human-judgment-ai",
@@ -87,7 +101,14 @@
       "editorial_approved": false,
       "status": "review",
       "creative_tool": "chatgpt-image-generation",
-      "source_type": "published_essay"
+      "source_type": "published_essay",
+      "title": "Do People Still Need People in an Age of AI?",
+      "text": "What remains important about human understanding, judgment and trust as AI becomes part of everyday work? Read The Context Engine essay.",
+      "alt_text": "The Context Engine editorial graphic with two chairs in an office and the headline Do People Still Need People?",
+      "preview_file": "tce_essay_03_review.png",
+      "visual_concept_approved": true,
+      "approval_note": "Concept approved by user; final wording, source fidelity and image delivery pending",
+      "tracked_destination_url": "https://davidkraase.substack.com/p/do-people-still-need-people-ai?utm_source=pinterest&utm_medium=organic_social&utm_campaign=tce_essay_archive&utm_content=essay-03-human-judgment-ai"
     }
   ]
 }
