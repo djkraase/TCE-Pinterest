@@ -11,6 +11,17 @@ p = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(p)
 
 class ReviewTests(unittest.TestCase):
+    def test_unapproved_essay_reviews_remain_ineligible(self):
+        # Concept approval or an accidental status change is not final approval.
+        for status in ('review', 'approved'):
+            for visual_qa in (False, True):
+                with self.subTest(status=status, visual_qa=visual_qa):
+                    pin = {'id': 'essay-review-fixture', 'status': status,
+                           'editorial_approved': False, 'visual_qa_approved': visual_qa,
+                           'visual_concept_approved': True}
+                    with self.assertRaisesRegex(p.Blocked, 'individual editorial and visual approval required'):
+                        p.candidate(pin)
+
     def test_matches_must_require_image(self):
         payload = {'text': 'approved copy', 'assets': [{'image': {'url': p.IMAGE_BASE + 'tce_pin_02_publish.jpg', 'metadata': {'altText': 'approved alt'}}}], 'metadata': {'pinterest': {'title': 'approved title', 'url': p.DESTINATION}}}
         post = {'channelId': p.CHANNEL, 'text': payload['text'], 'metadata': {'title': 'approved title', 'url': p.DESTINATION, 'board': {'serviceId': p.BOARD}}, 'assets': []}

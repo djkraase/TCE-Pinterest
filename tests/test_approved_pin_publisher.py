@@ -173,21 +173,33 @@ class PublisherTests(unittest.TestCase):
         self.api.create(payload)
         self.api.items[0]['assets'][0]['image']['altText'] = 'unapproved'
         self.assertFalse(p.verified_content(self.api.items[0], payload))
-    def test_live_audit_reports_pending_and_existing_without_writes(self):
+    def test_live_audit_reports_manifest_states_without_writes(self):
         import contextlib
         import io
         import json
-        self.api.items = [{'id': p.FIRST_POST, 'channelId': p.CHANNEL, 'status': 'sent',
+        pins = json.loads((p.ROOT / 'campaign/pins.json').read_text())['pins']
+        self.api.items = [{'id': pin['buffer_post_id'], 'channelId': p.CHANNEL, 'status': 'sent',
                            'sentAt': '2026-11-02T22:15:04.050Z',
-                           'externalLink': 'https://www.pinterest.com/pin/1083467622891676708'}]
+                           'externalLink': pin['pinterest_url']}
+                          for pin in pins if pin.get('buffer_post_id')]
         output = io.StringIO()
         with patch.object(p, 'Buffer', return_value=self.api), patch('sys.argv', ['publisher', '--mode', 'audit']), patch.dict(p.os.environ, {'GITHUB_EVENT_NAME': 'workflow_dispatch'}), patch.object(p, 'verify_urls'), contextlib.redirect_stdout(output):
             p.main()
         result = json.loads(output.getvalue())
         self.assertEqual(result['mode'], 'read_only_audit')
         self.assertEqual(result['available_slots'], 10)
-        self.assertTrue(result['pins'][0]['publication_verified'])
-        self.assertEqual([x['action'] for x in result['pins'][1:]], ['content_checks_passed_schedule_not_checked', 'content_checks_passed_schedule_not_checked'])
+        self.assertEqual([x['pin_id'] for x in result['pins']], [pin['id'] for pin in pins])
+        for pin, report in zip(pins, result['pins']):
+            with self.subTest(pin_id=pin['id']):
+                if pin.get('buffer_post_id'):
+                    self.assertEqual(report['action'], 'existing_post')
+                    self.assertEqual(report['buffer_post_id'], pin['buffer_post_id'])
+                    self.assertTrue(report['publication_verified'])
+                elif pin.get('editorial_approved') is not True or pin.get('visual_qa_approved') is not True:
+                    self.assertEqual(report['action'], 'blocked')
+                    self.assertEqual(report['reason'], 'individual editorial and visual approval required')
+                else:
+                    self.assertEqual(report['action'], 'content_checks_passed_schedule_not_checked')
         self.assertEqual(self.api.calls, 0)
     def test_replenish_sequential_and_skips_unapproved(self):
         pins = [dict(self.pin, editorial_approved=False), self.pin, dict(self.pin, id='pin-next')]

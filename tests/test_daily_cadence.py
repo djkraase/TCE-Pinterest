@@ -183,12 +183,20 @@ class DailyCadenceTests(unittest.TestCase):
         expected = {
             'pin-02-revisited-decisions': '3a9e6ead9b72bcc4843d6c9a4659095de795036b850af6dcb797df7d1931c794',
             'pin-03-lost-context': 'b232708c9b921ead54ba82cd63f7927d25ae8390cb0ef958fb901b3a7fa72c04'}
-        for pin in pins:
-            if pin['id'] == p.FIRST_ID:
-                with self.assertRaises(p.Blocked): p.candidate(pin)
-            else:
-                payload, _ = p.candidate(pin)
-                self.assertEqual(p.digest(payload), expected[pin['id']])
+        by_id = {pin['id']: pin for pin in pins}
+        with self.assertRaises(p.Blocked): p.candidate(by_id[p.FIRST_ID])
+        for pin_id, payload_hash in expected.items():
+            with self.subTest(pin_id=pin_id):
+                pin = by_id[pin_id]
+                if pin.get('buffer_post_id') or pin.get('status') in ('sent', 'scheduled'):
+                    with self.assertRaises(p.Blocked): p.candidate(pin)
+                # Lifecycle updates must not change the historical content hash.
+                # Only a local snapshot is made eligible; the manifest is untouched.
+                snapshot = copy.deepcopy(pin)
+                snapshot.pop('buffer_post_id', None)
+                snapshot['status'] = 'approved'
+                payload, _ = p.candidate(snapshot)
+                self.assertEqual(p.digest(payload), payload_hash)
                 self.assertEqual(payload['mode'], 'addToQueue')
 
     def test_original_reservation_never_released_if_remote_post_moves(self):
