@@ -11,7 +11,9 @@
       "board_service_id": "1083467691545125927",
       "editorial_approved": true,
       "buffer_post_id": "6ae9060f3b6f22c15ed12663",
-      "status": "sent"
+      "status": "sent",
+      "pinterest_url": "https://www.pinterest.com/pin/1083467622891676708",
+      "published_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic"
     },
     {
       "id": "pin-02-revisited-decisions",
@@ -28,7 +30,9 @@
       "alt_text": "The Context Engine graphic showing a notebook and pen. Text reads: “Why Are We Revisiting This Decision? A practical knowledge governance diagnostic.” Button reads: “Run the diagnostic.”",
       "approval_ref": "approval-2026-11-03-initial-two-pins",
       "asset_sha256": "0ad642cceaba3048e6db285d356e026b0cfe1b3bccb627947d7e7dded4bcad28",
-      "buffer_post_id": "6ae9337d0d3397810d04593e"
+      "buffer_post_id": "6ae9337d0d3397810d04593e",
+      "pinterest_url": "https://www.pinterest.com/pin/1083467622891688560",
+      "published_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-02-revisited-decisions"
     },
     {
       "id": "pin-03-lost-context",
@@ -45,7 +49,9 @@
       "alt_text": "The Context Engine graphic with three map markers connected by a dashed path. Text reads: “Where Does Important Context Get Lost? Map one breakdown before choosing a fix.” Button reads: “Explore the diagnostic.”",
       "approval_ref": "approval-2026-11-03-initial-two-pins",
       "asset_sha256": "b038dd9afcc9247465ce5dea350932e3c34594ee8316f1da4a08a8a6a2f05cb7",
-      "buffer_post_id": "6ae933817996caf141c2235c"
+      "buffer_post_id": "6ae933817996caf141c2235c",
+      "pinterest_url": "https://www.pinterest.com/pin/1083467622891693012",
+      "published_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-03-lost-context"
     }
   ]
 }
