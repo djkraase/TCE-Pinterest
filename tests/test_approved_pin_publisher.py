@@ -235,3 +235,75 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.ledger.version, 0)
         self.assertIsNone(self.ledger.state['lock'])
         self.assertEqual(self.ledger.state['records'], {})
+    def test_recorded_sent_refresh_and_repeat_are_create_free(self):
+        self.run_publish()
+        self.api.items[0].update(status='sent', sentAt='2026-11-03T01:40:00Z', externalLink='https://www.pinterest.com/pin/123')
+        before = self.ledger.version
+        result = self.run_publish()
+        self.assertEqual(result['ledger_refresh'], 'updated')
+        self.assertEqual(self.ledger.version, before + 1)
+        record = self.ledger.state['records'][self.pin['id']]
+        self.assertEqual(record['state'], 'recorded')
+        self.assertEqual(record['status'], 'sent')
+        self.assertEqual(record['publication_id'], '123')
+        self.assertTrue(record['publication_verified'])
+        self.assertIsNone(self.ledger.state['lock'])
+        self.assertEqual(self.run_publish()['ledger_refresh'], 'unchanged')
+        self.assertEqual(self.ledger.version, before + 1)
+        self.assertEqual(self.api.calls, 1)
+    def test_refresh_never_clears_intent_or_any_lock(self):
+        self.run_publish()
+        before = self.ledger.version
+        record = self.ledger.state['records'][self.pin['id']]
+        record['state'] = 'intent'
+        self.assertEqual(self.run_publish()['ledger_refresh'], 'review_required')
+        record['state'] = 'recorded'
+        for lock in [self.pin['id'], 'other-pin']:
+            self.ledger.state['lock'] = lock
+            self.assertEqual(self.run_publish()['ledger_refresh'], 'deferred_locked')
+            self.assertEqual(self.ledger.state['lock'], lock)
+        self.assertEqual(self.ledger.version, before)
+        self.assertEqual(self.api.calls, 1)
+    def test_refresh_mismatch_and_multiple_duplicates_never_overwrite(self):
+        self.run_publish()
+        before = self.ledger.version
+        original = copy.deepcopy(self.ledger.state)
+        for key in ['buffer_post_id', 'payload_sha256', 'asset_sha256', 'intent_sha256']:
+            self.ledger.state = copy.deepcopy(original)
+            self.ledger.state['records'][self.pin['id']][key] = 'mismatch'
+            self.assertEqual(self.run_publish()['ledger_refresh'], 'review_required')
+        self.ledger.state = copy.deepcopy(original)
+        self.api.items.append(dict(self.api.items[0], id='another-duplicate'))
+        self.assertEqual(self.run_publish()['ledger_refresh'], 'review_required')
+        self.assertEqual(self.ledger.version, before)
+        self.assertEqual(self.api.calls, 1)
+    def test_unknown_duplicate_does_not_initialize_ledger_record(self):
+        payload, _ = p.candidate(self.pin, self.assets)
+        self.api.create(payload)
+        self.assertEqual(self.run_publish()['ledger_refresh'], 'no_record')
+        self.assertEqual(self.ledger.state['records'], {})
+        self.assertEqual(self.ledger.version, 0)
+        self.assertEqual(self.api.calls, 1)
+    def test_refresh_cas_conflict_stops_without_retry_or_create(self):
+        self.run_publish()
+        self.api.items[0]['status'] = 'sending'
+        self.ledger.fail_at = self.ledger.version
+        with self.assertRaises(p.Blocked): self.run_publish()
+        self.assertEqual(self.ledger.state['records'][self.pin['id']]['status'], 'scheduled')
+        self.assertEqual(self.api.calls, 1)
+    def test_dry_run_duplicate_never_writes_ledger(self):
+        self.run_publish()
+        self.api.items[0]['status'] = 'sending'
+        before = self.ledger.version
+        self.assertNotIn('ledger_refresh', self.run_publish(False))
+        self.assertEqual(self.ledger.version, before)
+        self.assertEqual(self.api.calls, 1)
+    def test_refresh_fresh_post_content_mismatch_never_overwrites(self):
+        self.run_publish()
+        before = self.ledger.version
+        wrong = copy.deepcopy(self.api.items[0])
+        wrong['assets'][0]['image']['altText'] = 'unexpected'
+        with patch.object(self.api, 'post', return_value=wrong):
+            self.assertEqual(self.run_publish()['ledger_refresh'], 'review_required')
+        self.assertEqual(self.ledger.version, before)
+        self.assertEqual(self.api.calls, 1)

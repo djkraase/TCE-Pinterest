@@ -341,6 +341,36 @@ def outcome(post):
             'publication_verified': published, 'verification_basis': 'Buffer status + sentAt + Pinterest URL; not independent page fetch'}
 
 
+def refresh_recorded(pin, payload, duplicates, api, ledger):
+    """Refresh confirmed job outcomes only. Never create, claim, or unlock."""
+    if len(duplicates) != 1:
+        return 'review_required'
+    state, sha = ledger.read()
+    if state['lock'] is not None:
+        return 'deferred_locked'
+    record = state['records'].get(pin['id'])
+    if not record:
+        return 'no_record'
+    if (record.get('state') != 'recorded'
+            or record.get('payload_sha256') != digest(payload)
+            or record.get('asset_sha256') != pin['asset_sha256']
+            or record.get('intent_sha256') != digest([pin['source_id'], pin['search_intent']])
+            or record.get('buffer_post_id') != duplicates[0].get('id')
+            or not verified_content(duplicates[0], payload)):
+        return 'review_required'
+    post = api.post(record['buffer_post_id'])
+    if (post.get('id') != record['buffer_post_id'] or post.get('status') not in POST_STATUSES
+            or not verified_content(post, payload)):
+        return 'review_required'
+    current = outcome(post)
+    if all(record.get(key) == value for key, value in current.items()):
+        return 'unchanged'
+    updated = copy.deepcopy(state)
+    updated['records'][pin['id']].update(current)
+    ledger.cas(updated, sha)  # One CAS only; conflicts/errors stop, never retry.
+    return 'updated'
+
+
 def publish(pin, api, ledger, execute=False, assets=ROOT / 'assets', url_check=verify_urls):
     payload, body = candidate(pin, assets)
     api.verify()
@@ -348,7 +378,10 @@ def publish(pin, api, ledger, execute=False, assets=ROOT / 'assets', url_check=v
     duplicates = [p for p in posts if matches(p, payload) or any(
         a.get('source') == payload['assets'][0]['image']['url'] for a in p.get('assets', []))]
     if duplicates:
-        return {'action': 'remote_duplicate_no_create', 'posts': [outcome(p) for p in duplicates]}
+        result = {'action': 'remote_duplicate_no_create', 'posts': [outcome(p) for p in duplicates]}
+        if execute:
+            result['ledger_refresh'] = refresh_recorded(pin, payload, duplicates, api, ledger)
+        return result
     if sum(p['status'] in ('scheduled', 'sending') for p in posts) >= 10:
         raise CapacityDeferred('queue capacity reached')
     url_check(payload, body)

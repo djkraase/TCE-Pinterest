@@ -1,7 +1,20 @@
 # Approved-Pin publisher — approved-inventory automation
 
 Baseline: `a1998f1c901bf411b793c358e72838c1b98d87b6`, checked 2026-11-03 UTC.
-Original first-Pin asset, README, validation workflow and read-only preflight are preserved. The two next approved assets and manifest records are added; the existing audit cron delegates sequential replenishment without a second scheduler. The owner approved the two-Pin launch, durable job-state writes, and ongoing scheduling from individually approved Pinterest inventory on 2026-11-03. Activation still requires successful Pages/read-only checks and the repository enable switch.
+Original first-Pin asset, README, validation workflow and read-only preflight are preserved. The two next approved assets and manifest records are added; the existing audit cron delegates sequential replenishment without a second scheduler. The owner approved the two-Pin launch, durable job-state writes, and ongoing scheduling from individually approved Pinterest inventory on 2026-11-03. Activation completed after successful Pages/read-only checks; `PINTEREST_PUBLISHER_ENABLED=true` and the main-only publishing environment are configured.
+
+## Verified activation — 2026-11-03
+
+Production [run 41557444845](https://github.com/djkraase/TCE-Pinterest/actions/runs/41557444845) succeeded on commit `38d2ad4305bf9f81e2c0936d0ad971daf2a5c873`. It created exactly two approved Pins, with matching copy, alt text, board and deterministic tracking links:
+
+| Manifest record | Buffer post | Scheduled UTC |
+|---|---|---|
+| pin-02-revisited-decisions | 6ae9337d0d3397810d04593e | 2026-11-03 01:40 |
+| pin-03-lost-context | 6ae933817996caf141c2235c | 2026-11-03 02:56 |
+
+At activation both were **scheduled, not yet confirmed sent**. The durable ledger had two `recorded` entries and `lock: null`. Direct GraphQL creation, retrieval and GitHub ledger CAS writes are now integration-tested by this run. This does not prove subsequent Pinterest publication, first timed replenishment, or revenue. The first timed run to verify is 2026-11-03 at 13:15 UTC; GitHub may start scheduled workflows later than the cron time.
+
+The replacement Buffer key expires **2027-11-02**. Its only permissions are account:read, posts:read and posts:write; its value remains solely in the existing GitHub secret. No credential values belong in this repository. Key permissions are account-wide; the publisher enforces the narrow Pinterest channel/board/destination allowlist.
 
 ## Verified current state
 
@@ -35,6 +48,8 @@ For a **newly approved** record retain `id`, `source_id`, `search_intent`, `asse
 - `asset_sha256`: SHA-256 of exact approved public image; remote bytes must match local bytes.
 - `approval_ref`: non-private review identifier (not private source content or credentials).
 
+The campaign manifest represents **editorial intent and approved content**, not current operational posting state. Pins 2/3 remain `approved` there after scheduling; `pinterest-state/publisher-ledger.json` is the durable operational record, and live Buffer queries supply current outcomes. Consequently the existing manifest audit can report “eligible” for already scheduled records; the publisher must still consult remote deduplication and ledger before creating anything.
+
 Do not copy private source documents into this public repo. No placeholders or draft copy become approvals. The `status: draft` audit eligibility is deliberately stricter here: publisher requires explicit `approved`. No Canva automation needed for an already approved, ready image. It never uploads or transforms creative.
 
 ## Durable state and crash behavior
@@ -49,20 +64,22 @@ Ledger has only public-safe Pin IDs, hashes, status, Buffer IDs, timestamps and 
 
 Before create: global lock + intent atomically persisted with GitHub Contents SHA compare-and-swap. Two runners with same old SHA cannot both claim; additionally workflow concurrency serializes all modes. Before mutation, recheck remote cap/dedup. Final state persists verified Buffer ID and clears the lock. Cross-ID payload, creative and source-intent hashes prevent renamed-ID resubmissions even if Buffer history is later deleted.
 
+On an already-existing remote duplicate, live execute/replenish may refresh **only an already recorded** ledger entry. It requires exactly one strict matching post, the existing Buffer ID and payload/asset/source-intent hashes, no global lock, and a fresh matching post read. It updates outcome fields with one CAS; unchanged data causes no write. Any mismatch or uncertain intent requires explicit review/reconcile; it never automatically clears locks or creates a missing record. Preview modes remain read-only.
+
 If timeout/crash occurs after claim, including before request or after successful remote creation, **intent stays locked**. Next run deduplicates remote first, does not blindly retry. Explicit reconcile can attach the unique verified post without creating another. If no remote match, multiple matches, changed content, rejected mutation, or outcome unavailable: stop and investigate. Never automatically expire the lock; manually clearing an uncertain intent could duplicate a real Pin. This deliberately trades liveness for at-most-one request. Buffer does not document a create idempotency key; exactly-once delivery cannot be honestly promised.
 
 The cap check counts scheduled+sending on the allowed channel; Buffer's own plan enforcement is final protection against a simultaneous human/external writer. The ledger lock coordinates this publisher only. Existing orchestrator must route all publisher writes through this workflow rather than also create Pins through the connector. Avoid independent manual queue writes while executing a batch.
 
 ## Integration and activation gates
 
-1. Obtain permission for code publication and credential replacement. Minimum Buffer scopes: accountRead (`account:read`), postsRead (`posts:read`), postsWrite (`posts:write`). No accountWrite, ideas, insights, snippets. The current account-read-only key cannot publish. Buffer key has account-wide access; allowlisting is enforced by code, not token scope.
+1. Obtain permission for code publication and credential replacement. Minimum Buffer scopes: accountRead (`account:read`), postsRead (`posts:read`), postsWrite (`posts:write`). No accountWrite, ideas, insights, snippets. The former account-read-only test key was replaced during activation. Buffer key has account-wide access; allowlisting is enforced by code, not token scope.
 2. Review/commit these files and run offline tests/plan on main. No second cron or publishing-on-push trigger is added. The existing audit schedule remains `15 13 * * *` (13:15 UTC, 08:15 EST / 09:15 EDT). Only its scheduled event, after successful audit and with the enable switch on, calls the publisher using explicit BUFFER_API_KEY secret mapping. Manual audit and pushes do not schedule Pins.
 3. Authorized task lookup returned zero ChatGPT automations; the earlier claimed 09:00 Eastern task is unverified. Reuse the verified existing repository audit cron instead. Do not add another ChatGPT task or GitHub cron. The audit job remains read-only; its dependent scheduled-only publisher job receives contents:write.
-4. Durable state initialization is authorized and the `pinterest-state` branch is initialized once. Configure `pinterest-publishing` with Selected branches and tags allowing branch `main` only (not a same-named tag), no per-run required reviewers or wait timer. The owner authorized ongoing approved-inventory scheduling; per-record editorial/visual approvals are the content gate, not daily approval clicks. Verify the actual environment policy before enabling. Configure `PINTEREST_PUBLISHER_ENABLED=true` only after the authorized launch passes live read-only checks. It is absent/false by default.
-5. Independently confirm destination purchasability and approved offer/price before live enablement; the automated HTTP 200/HTML check establishes retrieval only, not checkout or sales readiness. Populate one genuinely approved, full-size QA-passed, public image/copy record. Run `check` with read scope. Review output. The first two-Pin write run is authorized in scope, but must wait for the coordinated activation checks; plan/check success alone is not evidence of publication.
+4. Durable state initialization is authorized and the `pinterest-state` branch is initialized once. Configure `pinterest-publishing` with Selected branches and tags allowing branch `main` only (not a same-named tag), no per-run required reviewers or wait timer. The owner authorized ongoing approved-inventory scheduling; per-record editorial/visual approvals are the content gate, not daily approval clicks. This main-only policy and enable switch are now verified active. Set `PINTEREST_PUBLISHER_ENABLED=false` to stop future live jobs while retaining read-only checks. Defaults remain fail-closed for a new installation.
+5. Continue checking the current published, unblocked, InStock $39+ offer through the strict public-page gate. It establishes offer availability, not successful checkout or payment. Populate one genuinely approved, full-size QA-passed, public image/copy record. Run `check` with read scope. Review output. The initial two-Pin scheduling run passed the coordinated activation checks; plan/check/scheduling success alone is not evidence of publication.
 6. Existing orchestrator dispatches one chosen record at a time; follow with `status`, report errors/drafts distinctly, and later verify sentAt/publication ID. Do not treat queued as sent. Continue outcome tracking at the existing scheduler cadence, with no new scheduler.
 
-Schema/live reads were verified via connected Buffer tools, but **new direct GraphQL operations and GitHub ledger writes have not been integration-tested with real keys**. Activation needs authorized read-only direct query check first, then controlled live execution with the two approved Pins. Current tests are fake API/ledger tests, not evidence of real publication.
+Unit tests use fake API/ledger fixtures. The production run above separately verifies real scheduling and ledger operations. Continue checking Buffer sentAt plus Pinterest publication ID/URL for each due Pin and the existing daily scheduled workflow; do not conflate those separate results. Purchases and subscriptions remain UNKNOWN until attributable evidence is available.
 
 ## Official API sources reviewed 2026-11-03
 
