@@ -1,5 +1,1 @@
-{
-  "schema_version": 1,
-  "lock": null,
-  "records": {}
-}
+{"lock": "pin-02-revisited-decisions", "records": {"pin-02-revisited-decisions": {"asset_sha256": "0ad642cceaba3048e6db285d356e026b0cfe1b3bccb627947d7e7dded4bcad28", "intent_sha256": "b0f7c464951be7e75d5d753843810ef5ae9c2d2a5b9604d5c87940e0d389ed38", "payload_sha256": "3a9e6ead9b72bcc4843d6c9a4659095de795036b850af6dcb797df7d1931c794", "state": "intent"}}, "schema_version": 1}
