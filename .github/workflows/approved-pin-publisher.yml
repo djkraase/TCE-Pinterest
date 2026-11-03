@@ -1,0 +1,64 @@
+name: Approved Pinterest Pin (manual, dry-run first)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [plan, audit, check, status, execute, reconcile]
+        default: plan
+      pin_id:
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        default: plan
+      pin_id:
+        type: string
+        default: ''
+    secrets:
+      BUFFER_API_KEY:
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: tce-pinterest-publisher
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/main' && (inputs.mode == 'plan' || inputs.mode == 'audit' || inputs.mode == 'check' || inputs.mode == 'status')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -v
+      - name: Read-only preview or publication status
+        env:
+          MODE: ${{ inputs.mode }}
+          PIN_ID: ${{ inputs.pin_id }}
+          BUFFER_API_KEY: ${{ inputs.mode != 'plan' && secrets.BUFFER_API_KEY || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/approved_pin_publisher.py --mode "$MODE" --pin-id "$PIN_ID"
+  publish:
+    if: github.ref == 'refs/heads/main' && vars.PINTEREST_PUBLISHER_ENABLED == 'true' && (inputs.mode == 'execute' || inputs.mode == 'reconcile')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    environment: pinterest-publishing
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -v
+      - name: One approved Pin or reconcile only
+        env:
+          MODE: ${{ inputs.mode }}
+          PIN_ID: ${{ inputs.pin_id }}
+          PUBLISHER_ENABLED: ${{ vars.PINTEREST_PUBLISHER_ENABLED }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/approved_pin_publisher.py --mode "$MODE" --pin-id "$PIN_ID"
