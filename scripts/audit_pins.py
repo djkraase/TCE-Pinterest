@@ -37,6 +37,14 @@ def audit():
         if not hosted: issues.append("asset not hosted in repository")
         if parsed.scheme != "https" or not parsed.netloc: issues.append("invalid HTTPS destination")
         if not p.get("board_service_id"): issues.append("board missing")
+        if status not in ("sent", "scheduled") and approved:
+            from urllib.parse import parse_qs
+            tracked = urlparse(p.get("published_destination_url") or p.get("destination_url", ""))
+            params = parse_qs(tracked.query)
+            required = {"utm_source": "pinterest", "utm_medium": "organic_social", "utm_content": pid}
+            for k, v in required.items():
+                if params.get(k) != [v]:
+                    issues.append("prepublication tracking missing: " + k)
         if status in ("sent", "scheduled") and not post_id: issues.append("published/scheduled without Buffer post id")
         if status in ("sent", "scheduled") and not approved: issues.append("published/scheduled without approval")
         if status == "approved" and not approved: issues.append("approved status without editorial approval")
