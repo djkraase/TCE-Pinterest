@@ -18,3 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/audit_pins.py
+  replenish:
+    needs: audit
+    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main' && vars.PINTEREST_PUBLISHER_ENABLED == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/approved-pin-publisher.yml
+    with:
+      mode: replenish
+    secrets:
+      BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}

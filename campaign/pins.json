@@ -20,8 +20,14 @@
       "asset": "tce_pin_02_publish.jpg",
       "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
       "board_service_id": "1083467691545125927",
-      "editorial_approved": false,
-      "status": "asset-pending"
+      "editorial_approved": true,
+      "status": "approved",
+      "visual_qa_approved": true,
+      "title": "Why Teams Keep Revisiting the Same Decisions",
+      "text": "Repeated decisions can signal missing rationale, unclear ownership or unreliable records. Explore the Knowledge Governance Diagnostic workbook for investigating one specific breakdown.",
+      "alt_text": "The Context Engine graphic showing a notebook and pen. Text reads: “Why Are We Revisiting This Decision? A practical knowledge governance diagnostic.” Button reads: “Run the diagnostic.”",
+      "approval_ref": "approval-2026-11-03-initial-two-pins",
+      "asset_sha256": "0ad642cceaba3048e6db285d356e026b0cfe1b3bccb627947d7e7dded4bcad28"
     },
     {
       "id": "pin-03-lost-context",
@@ -30,8 +36,14 @@
       "asset": "tce_pin_03_publish.jpg",
       "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
       "board_service_id": "1083467691545125927",
-      "editorial_approved": false,
-      "status": "asset-pending"
+      "editorial_approved": true,
+      "status": "approved",
+      "visual_qa_approved": true,
+      "title": "How to Identify a Knowledge Handoff Problem",
+      "text": "Information can exist in a team without reaching the person who needs it. The Knowledge Governance Diagnostic helps structure an investigation into one context or handoff failure.",
+      "alt_text": "The Context Engine graphic with three map markers connected by a dashed path. Text reads: “Where Does Important Context Get Lost? Map one breakdown before choosing a fix.” Button reads: “Explore the diagnostic.”",
+      "approval_ref": "approval-2026-11-03-initial-two-pins",
+      "asset_sha256": "b038dd9afcc9247465ce5dea350932e3c34594ee8316f1da4a08a8a6a2f05cb7"
     }
   ]
 }

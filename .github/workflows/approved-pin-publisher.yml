@@ -4,7 +4,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [plan, audit, check, status, execute, reconcile]
+        options: [plan, audit, check, status, execute, reconcile, replenish]
         default: plan
       pin_id:
         type: string
@@ -43,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/approved_pin_publisher.py --mode "$MODE" --pin-id "$PIN_ID"
   publish:
-    if: github.ref == 'refs/heads/main' && vars.PINTEREST_PUBLISHER_ENABLED == 'true' && (inputs.mode == 'execute' || inputs.mode == 'reconcile')
+    if: github.ref == 'refs/heads/main' && vars.PINTEREST_PUBLISHER_ENABLED == 'true' && (inputs.mode == 'execute' || inputs.mode == 'reconcile' || inputs.mode == 'replenish')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

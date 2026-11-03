@@ -179,11 +179,59 @@ class PublisherTests(unittest.TestCase):
                            'sentAt': '2026-11-02T22:15:04.050Z',
                            'externalLink': 'https://www.pinterest.com/pin/1083467622891676708'}]
         output = io.StringIO()
-        with patch.object(p, 'Buffer', return_value=self.api), patch('sys.argv', ['publisher', '--mode', 'audit']), contextlib.redirect_stdout(output):
+        with patch.object(p, 'Buffer', return_value=self.api), patch('sys.argv', ['publisher', '--mode', 'audit']), patch.object(p, 'verify_urls'), contextlib.redirect_stdout(output):
             p.main()
         result = json.loads(output.getvalue())
         self.assertEqual(result['mode'], 'read_only_audit')
         self.assertEqual(result['available_slots'], 10)
         self.assertTrue(result['pins'][0]['publication_verified'])
-        self.assertEqual([x['action'] for x in result['pins'][1:]], ['blocked', 'blocked'])
+        self.assertEqual([x['action'] for x in result['pins'][1:]], ['ready_to_schedule', 'ready_to_schedule'])
         self.assertEqual(self.api.calls, 0)
+    def test_replenish_sequential_and_skips_unapproved(self):
+        pins = [dict(self.pin, editorial_approved=False), self.pin, dict(self.pin, id='pin-next')]
+        order = []
+        def fake_publish(pin, api, ledger, execute=False):
+            order.append(pin['id'])
+            self.assertTrue(execute)
+            return {'action': 'created'}
+        with patch.object(p, 'candidate', side_effect=lambda pin: (_ for _ in ()).throw(p.Blocked('unapproved')) if not pin['editorial_approved'] else ({}, b'')), patch.object(p, 'publish', side_effect=fake_publish):
+            result = p.replenish(pins, self.api, self.ledger)
+        self.assertEqual(order, [self.pin['id'], 'pin-next'])
+        self.assertEqual(result['pins'][0]['action'], 'skipped')
+    def test_replenish_uncertain_write_stops_batch(self):
+        with patch.object(p, 'candidate', return_value=({}, b'')), patch.object(p, 'publish', side_effect=p.Blocked('uncertain')) as create:
+            with self.assertRaises(p.Blocked): p.replenish([self.pin, self.pin], self.api, self.ledger)
+            self.assertEqual(create.call_count, 1)
+    def test_write_guard_blocks_until_enabled_on_canonical_main(self):
+        import os
+        with patch.dict(os.environ, {'PUBLISHER_ENABLED': 'false', 'GITHUB_REF': 'refs/heads/main', 'GITHUB_REPOSITORY': p.REPO}):
+            with self.assertRaises(p.Blocked): p.write_guard()
+        with patch.dict(os.environ, {'PUBLISHER_ENABLED': 'true', 'GITHUB_REF': 'refs/heads/evil', 'GITHUB_REPOSITORY': p.REPO}):
+            with self.assertRaises(p.Blocked): p.write_guard()
+    def test_tracking_url_is_deterministic_and_keeps_canonical_manifest(self):
+        payload, _ = p.candidate(self.pin, self.assets)
+        self.assertEqual(payload['metadata']['pinterest']['url'], p.DESTINATION + '?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-02-test')
+        self.assertEqual(self.pin['destination_url'], p.DESTINATION)
+        with self.assertRaises(p.Blocked): p.tracked_destination('x&redirect=evil')
+    def test_untracked_identical_copy_suppresses_tracked_duplicate(self):
+        payload, _ = p.candidate(self.pin, self.assets)
+        self.api.create(payload)
+        self.api.items[0]['metadata']['url'] = p.DESTINATION
+        self.api.items[0]['assets'] = []
+        self.assertTrue(p.matches(self.api.items[0], payload))
+        self.assertFalse(p.verified_content(self.api.items[0], payload))
+        self.assertEqual(self.run_publish()['action'], 'remote_duplicate_no_create')
+        self.assertEqual(self.api.calls, 1)
+    def test_unknown_query_is_not_canonicalized(self):
+        self.assertIsNone(p.canonical_destination(p.DESTINATION + '?redirect=elsewhere'))
+        self.assertIsNone(p.canonical_destination(p.DESTINATION + '#other'))
+    def test_replenish_full_queue_defers_without_claim_or_create(self):
+        self.api.items = [{'id': str(i), 'status': 'scheduled'} for i in range(10)]
+        original_candidate = p.candidate
+        with patch.object(p, 'candidate', side_effect=lambda pin, *args: original_candidate(pin, self.assets)):
+            result = p.replenish([self.pin, dict(self.pin, id='pin-next')], self.api, self.ledger)
+        self.assertEqual(result['pins'], [{'pin_id': self.pin['id'], 'action': 'deferred', 'reason': 'queue_capacity_reached'}])
+        self.assertEqual(self.api.calls, 0)
+        self.assertEqual(self.ledger.version, 0)
+        self.assertIsNone(self.ledger.state['lock'])
+        self.assertEqual(self.ledger.state['records'], {})

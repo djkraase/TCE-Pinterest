@@ -4,6 +4,7 @@ import argparse
 import base64
 import copy
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode, urlsplit, parse_qsl
 
 ROOT = Path(__file__).resolve().parents[1]
 ORG = '6ad44c983788a9f13eb0c4cf'
@@ -31,6 +33,11 @@ metadata { ... on PinterestPostMetadata { title url board { serviceId } } }'''
 
 class Blocked(Exception):
     pass
+
+class CapacityDeferred(Blocked):
+    """Queue full before acquiring any durable claim."""
+    pass
+
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -174,6 +181,13 @@ def image_dimensions(body):
     raise Blocked('invalid image header')
 
 
+def tracked_destination(pin_id):
+    if not re.fullmatch(r'pin-[a-z0-9-]{1,70}', pin_id):
+        raise Blocked('invalid tracking Pin ID')
+    return DESTINATION + '?' + urlencode({'utm_source': 'pinterest', 'utm_medium': 'organic_social',
+        'utm_campaign': 'kg_diagnostic', 'utm_content': pin_id})
+
+
 def candidate(pin, assets=ROOT / 'assets'):
     if pin.get('id') == FIRST_ID or pin.get('buffer_post_id') or pin.get('status') in ('sent', 'scheduled'):
         raise Blocked('already processed')
@@ -202,24 +216,105 @@ def candidate(pin, assets=ROOT / 'assets'):
         raise Blocked('first published creative cannot be republished')
     payload = {'text': pin['text'], 'channelId': CHANNEL, 'schedulingType': 'automatic', 'mode': 'addToQueue', 'needsApproval': False, 'saveToDraft': False,
                'assets': [{'image': {'url': IMAGE_BASE + name, 'metadata': {'altText': pin['alt_text']}}}],
-               'metadata': {'pinterest': {'boardServiceId': BOARD, 'title': pin['title'], 'url': DESTINATION}}}
+               'metadata': {'pinterest': {'boardServiceId': BOARD, 'title': pin['title'], 'url': tracked_destination(pin['id'])}}}
     return payload, body
+
+
+class OfferPage(HTMLParser):
+    """Extract only public offer fields; never persist page/session props."""
+    def __init__(self):
+        super().__init__()
+        self.pages, self.structured = [], []
+        self.in_ld = False
+        self.ld_parts = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if 'data-page' in attrs:
+            self.pages.append(attrs['data-page'])
+        if tag == 'script' and attrs.get('type') == 'application/ld+json':
+            self.in_ld = True
+            self.ld_parts = []
+
+    def handle_data(self, data):
+        if self.in_ld:
+            self.ld_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'script' and self.in_ld:
+            self.structured.append(''.join(self.ld_parts))
+            self.in_ld = False
+
+
+def verify_offer(raw):
+    # Observed public Products/Show structure, not an undocumented API call.
+    # Schema drift is a block, not permission to silently skip this gate.
+    try:
+        page = OfferPage()
+        page.feed(raw.decode('utf-8'))
+        if len(page.pages) != 1:
+            raise ValueError()
+        data = json.loads(page.pages[0])
+        product = data['props']['product']
+        if (data.get('component') != 'Products/Show' or product.get('permalink') != 'hynllx'
+                or product.get('long_url') != DESTINATION
+                or product.get('is_published') is not True
+                or product.get('is_compliance_blocked') is not False
+                or product.get('currency_code') != 'usd' or product.get('price_cents') != 3900
+                or not isinstance(product.get('pwyw'), dict)
+                or product.get('options') != []
+                or 'waitlist' not in product or product['waitlist'] is not None
+                or 'preorder' not in product or product['preorder'] is not None):
+            raise ValueError()
+        if product.get('is_sales_limited') is not False:
+            quantity = product.get('quantity_remaining')
+            if product.get('is_sales_limited') is not True or type(quantity) is not int or quantity <= 0:
+                raise ValueError()
+        structured = [json.loads(x) for x in page.structured]
+        products = [x for x in structured if isinstance(x, dict) and x.get('@type') == 'Product']
+        if len(products) != 1:
+            raise ValueError()
+        schema = products[0]
+        offer = schema['offers']
+        if (schema.get('url') != DESTINATION or schema.get('sku') != 'hynllx'
+                or offer.get('@type') != 'Offer' or offer.get('url') != DESTINATION
+                or offer.get('availability') != 'https://schema.org/InStock'
+                or offer.get('priceCurrency') != 'USD' or offer.get('price') != 39):
+            raise ValueError()
+    except Exception:
+        # No raw HTML or JSON, which can contain runtime tokens, in logs.
+        raise Blocked('destination offer unavailable, changed, or unrecognized; manual review required') from None
+    return {'offer_available': True, 'currency': 'USD', 'minimum_price_cents': 3900,
+            'checkout_tested': False}
 
 
 def verify_urls(payload, body):
     raw, mime = request(payload['assets'][0]['image']['url'], limit=5_000_000)
     if raw != body or mime.split(';')[0] not in ('image/jpeg', 'image/png'):
         raise Blocked('hosted image not identical to approved image')
-    _, mime = request(DESTINATION, limit=5_000_000)
+    raw, mime = request(payload['metadata']['pinterest']['url'], limit=5_000_000)
     if 'text/html' not in mime:
         raise Blocked('destination not retrievable HTML')
+    verify_offer(raw)
+
+
+def canonical_destination(url):
+    if not isinstance(url, str):
+        return None
+    parsed = urlsplit(url)
+    if parsed.fragment or parsed.scheme + '://' + parsed.netloc + parsed.path != DESTINATION:
+        return None
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    if any(k not in {'utm_source', 'utm_medium', 'utm_campaign', 'utm_content'} for k, _ in pairs):
+        return None
+    return DESTINATION
 
 
 def matches(post, payload):
     m = post.get('metadata') or {}
     target = payload['metadata']['pinterest']
     return (post.get('channelId') == CHANNEL and post.get('text') == payload['text']
-            and m.get('title') == target['title'] and m.get('url') == target['url']
+            and m.get('title') == target['title'] and canonical_destination(m.get('url')) == DESTINATION
             and (m.get('board') or {}).get('serviceId') == BOARD)
 
 
@@ -229,7 +324,7 @@ def same_asset(post, payload):
 
 def verified_content(post, payload):
     assets = post.get('assets', [])
-    return (matches(post, payload) and len(assets) == 1 and same_asset(post, payload)
+    return (matches(post, payload) and (post.get('metadata') or {}).get('url') == payload['metadata']['pinterest']['url'] and len(assets) == 1 and same_asset(post, payload)
             and (assets[0].get('image') or {}).get('altText') == payload['assets'][0]['image']['metadata']['altText'])
 
 
@@ -255,7 +350,7 @@ def publish(pin, api, ledger, execute=False, assets=ROOT / 'assets', url_check=v
     if duplicates:
         return {'action': 'remote_duplicate_no_create', 'posts': [outcome(p) for p in duplicates]}
     if sum(p['status'] in ('scheduled', 'sending') for p in posts) >= 10:
-        raise Blocked('queue capacity reached')
+        raise CapacityDeferred('queue capacity reached')
     url_check(payload, body)
     if not execute:
         return {'action': 'dry_run_ready', 'pin_id': pin['id'], 'payload_sha256': digest(payload)}
@@ -308,10 +403,37 @@ def reconcile(pin, api, ledger, assets=ROOT / 'assets'):
     return {'action': 'reconciled_no_create', **result}
 
 
+def write_guard():
+    if (os.environ.get('PUBLISHER_ENABLED') != 'true'
+            or os.environ.get('GITHUB_REF') != 'refs/heads/main'
+            or os.environ.get('GITHUB_REPOSITORY') != REPO):
+        raise Blocked('write mode disabled or not canonical main')
+
+
+def replenish(pins, api, ledger):
+    """One mutation at a time; unknown write outcomes stop the whole run."""
+    api.verify()
+    results = []
+    for pin in pins:
+        try:
+            candidate(pin)
+        except Blocked as e:
+            results.append({'pin_id': pin['id'], 'action': 'skipped', 'reason': str(e)})
+            continue
+        # publish owns all live checks. Do not catch an uncertain write and continue.
+        try:
+            result = publish(pin, api, ledger, execute=True)
+        except CapacityDeferred:
+            results.append({'pin_id': pin['id'], 'action': 'deferred', 'reason': 'queue_capacity_reached'})
+            break
+        results.append({'pin_id': pin['id'], **result})
+    return {'mode': 'sequential_approved_replenishment', 'pins': results}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pin-id')
-    parser.add_argument('--mode', choices=('plan', 'audit', 'check', 'execute', 'reconcile', 'status'), default='plan')
+    parser.add_argument('--mode', choices=('plan', 'audit', 'check', 'execute', 'reconcile', 'status', 'replenish'), default='plan')
     args = parser.parse_args()
     pins = json.loads((ROOT / 'campaign/pins.json').read_text())['pins']
     ids = [p['id'] for p in pins]
@@ -341,7 +463,7 @@ def main():
                 payload, body = candidate(pin)
                 verify_urls(payload, body)
                 duplicate = any(matches(p, payload) or same_asset(p, payload) for p in posts)
-                report.append({'pin_id': pin['id'], 'action': 'remote_duplicate_no_create' if duplicate else 'ready_after_approval_to_execute'})
+                report.append({'pin_id': pin['id'], 'action': 'remote_duplicate_no_create' if duplicate else 'ready_to_schedule'})
             except Blocked as e:
                 report.append({'pin_id': pin['id'], 'action': 'blocked', 'reason': str(e)})
         queued = sum(p['status'] in ('scheduled', 'sending') for p in posts)
@@ -349,13 +471,16 @@ def main():
                           'queued_or_sending': queued, 'available_slots': max(0, 10 - queued),
                           'remote_posts_checked': len(posts), 'pins': report}, indent=2))
         return
+    if args.mode in ('execute', 'reconcile', 'replenish'):
+        write_guard()
+    if args.mode == 'replenish':
+        api = Buffer(os.environ.get('BUFFER_API_KEY'))
+        ledger = GitHubLedger(os.environ.get('GITHUB_TOKEN'))
+        print(json.dumps(replenish(pins, api, ledger), indent=2))
+        return
     selected = [p for p in pins if p['id'] == args.pin_id]
     if len(selected) != 1:
         raise Blocked('select exactly one existing campaign Pin')
-    if args.mode in ('execute', 'reconcile') and (os.environ.get('PUBLISHER_ENABLED') != 'true'
-            or os.environ.get('GITHUB_REF') != 'refs/heads/main'
-            or os.environ.get('GITHUB_REPOSITORY') != REPO):
-        raise Blocked('write mode disabled or not canonical main')
     api = Buffer(os.environ.get('BUFFER_API_KEY'))
     ledger = GitHubLedger(os.environ.get('GITHUB_TOKEN')) if args.mode in ('execute', 'reconcile') else None
     if args.mode == 'status':
