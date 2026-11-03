@@ -463,11 +463,55 @@ def replenish(pins, api, ledger):
     return {'mode': 'sequential_approved_replenishment', 'pins': results}
 
 
+def validate_dispatch(raw, manifest_bytes, ledger_sha):
+    """Public request contains fingerprints, never editorial authority or secrets."""
+    try:
+        if len(raw) > 2048:
+            raise ValueError()
+        def unique_fields(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError()
+                result[key] = value
+            return result
+        request_data = json.loads(raw, object_pairs_hook=unique_fields)
+        if set(request_data) != {'schema_version', 'action', 'run_id', 'manifest_blob_sha', 'ledger_blob_sha'}:
+            raise ValueError()
+        if type(request_data['schema_version']) is not int or request_data['schema_version'] != 1:
+            raise ValueError()
+        if request_data['action'] != 'replenish' or not re.fullmatch(
+                r'tce-pinterest-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}', request_data['run_id']):
+            raise ValueError()
+        manifest_sha = hashlib.sha1(b'blob ' + str(len(manifest_bytes)).encode() + b'\0' + manifest_bytes).hexdigest()
+        if (not re.fullmatch(r'[a-f0-9]{40}', request_data['ledger_blob_sha'])
+                or request_data['manifest_blob_sha'] != manifest_sha
+                or request_data['ledger_blob_sha'] != ledger_sha):
+            raise ValueError()
+    except Exception:
+        raise Blocked('invalid or stale pipeline dispatch request; refresh public fingerprints after review') from None
+    return request_data['run_id']
+
+
+def validate_push_dispatch(mode, ledger):
+    # Workflow path filters accept only pipeline/dispatch.json on main. This
+    # independent guard blocks replay through another mode/account/repository.
+    write_guard()
+    if mode != 'replenish' or os.environ.get('GITHUB_ACTOR') != 'djkraase':
+        raise Blocked('pipeline push must be authorized-account replenish')
+    _, sha = ledger.read()
+    return validate_dispatch((ROOT / 'pipeline/dispatch.json').read_bytes(),
+                             (ROOT / 'campaign/pins.json').read_bytes(), sha)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pin-id')
     parser.add_argument('--mode', choices=('plan', 'audit', 'check', 'execute', 'reconcile', 'status', 'replenish'), default='plan')
     args = parser.parse_args()
+    if os.environ.get('GITHUB_EVENT_NAME') == 'push':
+        run_id = validate_push_dispatch(args.mode, GitHubLedger(os.environ.get('GITHUB_TOKEN')))
+        print(json.dumps({'dispatch_run_id': run_id}))
     pins = json.loads((ROOT / 'campaign/pins.json').read_text())['pins']
     ids = [p['id'] for p in pins]
     intents = [(p.get('source_id'), p.get('search_intent')) for p in pins]

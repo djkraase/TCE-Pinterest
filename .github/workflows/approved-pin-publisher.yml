@@ -1,5 +1,9 @@
 name: Approved Pinterest Pin (manual, dry-run first)
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'pipeline/dispatch.json'
   workflow_dispatch:
     inputs:
       mode:
@@ -27,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   preview:
-    if: github.ref == 'refs/heads/main' && (inputs.mode == 'plan' || inputs.mode == 'audit' || inputs.mode == 'check' || inputs.mode == 'status')
+    if: github.event_name != 'push' && github.ref == 'refs/heads/main' && (inputs.mode == 'plan' || inputs.mode == 'audit' || inputs.mode == 'check' || inputs.mode == 'status')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -43,7 +47,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/approved_pin_publisher.py --mode "$MODE" --pin-id "$PIN_ID"
   publish:
-    if: github.ref == 'refs/heads/main' && vars.PINTEREST_PUBLISHER_ENABLED == 'true' && (inputs.mode == 'execute' || inputs.mode == 'reconcile' || inputs.mode == 'replenish')
+    if: github.ref == 'refs/heads/main' && vars.PINTEREST_PUBLISHER_ENABLED == 'true' && ((github.event_name == 'push' && github.actor == 'djkraase') || (github.event_name != 'push' && (inputs.mode == 'execute' || inputs.mode == 'reconcile' || inputs.mode == 'replenish')))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -56,7 +60,7 @@ jobs:
       - run: python3 -m unittest discover -s tests -v
       - name: One approved Pin or reconcile only
         env:
-          MODE: ${{ inputs.mode }}
+          MODE: ${{ github.event_name == 'push' && 'replenish' || inputs.mode }}
           PIN_ID: ${{ inputs.pin_id }}
           PUBLISHER_ENABLED: ${{ vars.PINTEREST_PUBLISHER_ENABLED }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}

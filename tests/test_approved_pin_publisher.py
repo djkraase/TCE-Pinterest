@@ -179,7 +179,7 @@ class PublisherTests(unittest.TestCase):
                            'sentAt': '2026-11-02T22:15:04.050Z',
                            'externalLink': 'https://www.pinterest.com/pin/1083467622891676708'}]
         output = io.StringIO()
-        with patch.object(p, 'Buffer', return_value=self.api), patch('sys.argv', ['publisher', '--mode', 'audit']), patch.object(p, 'verify_urls'), contextlib.redirect_stdout(output):
+        with patch.object(p, 'Buffer', return_value=self.api), patch('sys.argv', ['publisher', '--mode', 'audit']), patch.dict(p.os.environ, {'GITHUB_EVENT_NAME': 'workflow_dispatch'}), patch.object(p, 'verify_urls'), contextlib.redirect_stdout(output):
             p.main()
         result = json.loads(output.getvalue())
         self.assertEqual(result['mode'], 'read_only_audit')

@@ -12,7 +12,7 @@ Production [run 41557444845](https://github.com/djkraase/TCE-Pinterest/actions/r
 | pin-02-revisited-decisions | 6ae9337d0d3397810d04593e | 2026-11-03 01:40 |
 | pin-03-lost-context | 6ae933817996caf141c2235c | 2026-11-03 02:56 |
 
-At activation both were **scheduled, not yet confirmed sent**. The durable ledger had two `recorded` entries and `lock: null`. Direct GraphQL creation, retrieval and GitHub ledger CAS writes are now integration-tested by this run. This does not prove subsequent Pinterest publication, first timed replenishment, or revenue. The first timed run to verify is 2026-11-03 at 13:15 UTC; GitHub may start scheduled workflows later than the cron time.
+At activation both were **scheduled, not yet confirmed sent**. The durable ledger had two `recorded` entries and `lock: null`. Direct GraphQL creation, retrieval and GitHub ledger CAS writes are now integration-tested by this run. This does not prove subsequent Pinterest publication, first timed replenishment, or revenue. At initial activation the next GitHub timed run was 2026-11-03 at 13:15 UTC; the connected-app cutover below supersedes that timer once verified. A scheduled task existing is not evidence that its first recurring run succeeded.
 
 The replacement Buffer key expires **2027-11-02**. Its only permissions are account:read, posts:read and posts:write; its value remains solely in the existing GitHub secret. No credential values belong in this repository. Key permissions are account-wide; the publisher enforces the narrow Pinterest channel/board/destination allowlist.
 
@@ -70,11 +70,11 @@ If timeout/crash occurs after claim, including before request or after successfu
 
 The cap check counts scheduled+sending on the allowed channel; Buffer's own plan enforcement is final protection against a simultaneous human/external writer. The ledger lock coordinates this publisher only. Existing orchestrator must route all publisher writes through this workflow rather than also create Pins through the connector. Avoid independent manual queue writes while executing a batch.
 
-## Integration and activation gates
+## Initial activation history and continuing controls
 
 1. Obtain permission for code publication and credential replacement. Minimum Buffer scopes: accountRead (`account:read`), postsRead (`posts:read`), postsWrite (`posts:write`). No accountWrite, ideas, insights, snippets. The former account-read-only test key was replaced during activation. Buffer key has account-wide access; allowlisting is enforced by code, not token scope.
-2. Review/commit these files and run offline tests/plan on main. No second cron or publishing-on-push trigger is added. The existing audit schedule remains `15 13 * * *` (13:15 UTC, 08:15 EST / 09:15 EDT). Only its scheduled event, after successful audit and with the enable switch on, calls the publisher using explicit BUFFER_API_KEY secret mapping. Manual audit and pushes do not schedule Pins.
-3. Authorized task lookup returned zero ChatGPT automations; the earlier claimed 09:00 Eastern task is unverified. Reuse the verified existing repository audit cron instead. Do not add another ChatGPT task or GitHub cron. The audit job remains read-only; its dependent scheduled-only publisher job receives contents:write.
+2. Review/commit these files and run offline tests/plan on main. No second cron or publishing-on-push trigger is added. The initial audit schedule was `15 13 * * *` (13:15 UTC, 08:15 EST / 09:15 EDT), with scheduled-only publisher delegation. The connected-app cutover below removes that timer/delegation. Manual audit and generic pushes never schedule Pins; only an explicit valid dispatch-file event or authorized live manual mode can do so.
+3. At initial activation, authorized task lookup returned zero ChatGPT automations and the earlier claimed 09:00 Eastern task was unverified. The subsequent connected-app task must be verified before removing the initial GitHub timer. There must be exactly one recurring orchestrator after cutover. The preserved audit job remains read-only; only the guarded publisher job receives contents:write.
 4. Durable state initialization is authorized and the `pinterest-state` branch is initialized once. Configure `pinterest-publishing` with Selected branches and tags allowing branch `main` only (not a same-named tag), no per-run required reviewers or wait timer. The owner authorized ongoing approved-inventory scheduling; per-record editorial/visual approvals are the content gate, not daily approval clicks. This main-only policy and enable switch are now verified active. Set `PINTEREST_PUBLISHER_ENABLED=false` to stop future live jobs while retaining read-only checks. Defaults remain fail-closed for a new installation.
 5. Continue checking the current published, unblocked, InStock $39+ offer through the strict public-page gate. It establishes offer availability, not successful checkout or payment. Populate one genuinely approved, full-size QA-passed, public image/copy record. Run `check` with read scope. Review output. The initial two-Pin scheduling run passed the coordinated activation checks; plan/check/scheduling success alone is not evidence of publication.
 6. Existing orchestrator dispatches one chosen record at a time; follow with `status`, report errors/drafts distinctly, and later verify sentAt/publication ID. Do not treat queued as sent. Continue outcome tracking at the existing scheduler cadence, with no new scheduler.
@@ -88,3 +88,37 @@ Unit tests use fake API/ledger fixtures. The production run above separately ver
 - https://developers.buffer.com/examples/get-paginated-posts.html — complete history pagination.
 - https://developers.buffer.com/guides/authentication.html — Bearer header, scope definitions, account-wide key boundary.
 - https://support.buffer.com/en-us/articles/how-to-create-your-buffer-api-key-ShIgYVwM6j — personal-key permissions and free-plan single-key limit.
+
+
+## Connected-app orchestration and exact dispatch contract
+
+**Cutover verified 2026-11-03:** the enabled recurring task **Run TCE Pinterest Pipeline** owns intake through reporting, daily at 08:15 America/New_York with a flexible execution window. Drive private-state reads, Buffer account access, GitHub manifest reads and Canva design access passed preflight. The canonical private control file is referenced in that task; its identifier/link and the task internal identifier are deliberately not published here. The agent uses existing Drive, Canva, GitHub and Buffer connections; the GitHub runner does not gain private Drive/Canva/LLM credentials. Canva creation/export may remain a manual handoff. No paid host, new token or second timer is introduced.
+
+The existing private Drive operating system remains the editorial source of truth and persistent pipeline-state location. For each source/intent, the agent tracks a stable private item ID, source/version evidence, stage, approved copy and creative fingerprint, blocking reason, public manifest ID (when applicable), dispatch run ID and Buffer/publication IDs. Stages are `intake → drafted → creative_pending → qa_pending → approved → hosted → dispatch_requested → scheduled → sent`, with `blocked` plus a resumable prior stage. Re-reading the same source/version/intent must reuse that item rather than create another. Private evidence and editorial drafts stay private; only approved publication material and opaque identifiers enter this public repository.
+
+Each recurring run:
+
+1. Resume private persistent state, then inspect new/changed source material. Draft only source-grounded copy and a creative brief; deduplicate source/intent before work.
+2. Reuse or prepare creative through the connected Canva workflow. If manual creation/export is needed, record one specific handoff and continue unrelated ready items. Never mark a handoff or missing asset approved.
+3. Perform visual, claim, destination, copy, alt-text and board QA against exact output. Preserve the existing individual editorial/visual approval gates; the orchestrator cannot infer approval from an available file or a successful test.
+4. Deliver approved image bytes and exact approved manifest fields to the public repo. Await Pages success and verify direct images are byte-identical, the current approved offer is available, and Buffer has room. Do not upload private sources.
+5. Read the current GitHub blob SHA of `campaign/pins.json` on main and `publisher-ledger.json` on `pinterest-state`. Create/update **only** `pipeline/dispatch.json` as the explicit publish request. Use GitHub's expected-current-file SHA for updates; on conflict reread and review, never overwrite blindly.
+6. Follow that exact commit's publisher workflow, reconcile its outcome with private state, and later verify Buffer sentAt/publication IDs. Monitor known posts even if creative work is blocked. UTM links provide instrumentation, not proof of sales; attributable revenue remains UNKNOWN until evidence exists.
+
+Request format (example placeholders are not runnable):
+
+```json
+{
+  "schema_version": 1,
+  "action": "replenish",
+  "run_id": "tce-pinterest-20261103T131500Z-0123abcd",
+  "manifest_blob_sha": "<40 lowercase hex GitHub blob SHA>",
+  "ledger_blob_sha": "<40 lowercase hex GitHub blob SHA>"
+}
+```
+
+Exactly those five fields are accepted, at most 2048 bytes. `run_id` must match `tce-pinterest-YYYYMMDDTHHMMSSZ-8lowercasehex`; store it in private state as the correlation ID. Fingerprints are public Git blob SHAs, not keys or private source identifiers. The workflow accepts only the exact dispatch-file path on main and the authenticated `djkraase` push actor; this is account authorization, **not a claim of cryptographically signed commits**. Generic code, manifest or asset pushes do not trigger publishing. Manual workflow modes remain available with their current guards.
+
+On an accepted push, the runner selects `replenish`, enforces canonical repository/main/actor/enable/environment guards, verifies both current fingerprints, and then invokes the existing approved-only sequential publisher. Malformed or stale requests block before any Buffer write. Replayed events are additionally protected by remote deduplication and durable claims; an uncertain intent is never retried automatically or unlocked by this request. A request is not editorial approval and cannot broaden channel/board/destination/price permissions.
+
+**Atomic timer cutover:** verify the single connected-app recurring task and its private state access before removing the old timer. Task creation and connected-app preflight succeeded; this reviewed cutover commit now (a) adds the exact-path event trigger and request validator, and (b) removes the old `13:15 UTC` audit cron and its scheduled publisher call while preserving read-only audit push/manual triggers. Do not include a real dispatch file in that cutover commit. If task creation fails, do not apply the commit: the existing GitHub schedule remains operational. After cutover, verify the recurring task exists and no GitHub cron remains. If rollback is required, disable the connected-app task before restoring the previous cron, so two timers never run together. The first requested dispatch is a separate deliberate action after task/Pages/fingerprint verification.
