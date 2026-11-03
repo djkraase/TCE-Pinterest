@@ -52,6 +52,42 @@
       "buffer_post_id": "6ae933817996caf141c2235c",
       "pinterest_url": "https://www.pinterest.com/pin/1083467622891693012",
       "published_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-03-lost-context"
+    },
+    {
+      "id": "essay-01-workaround",
+      "source_id": "what-can-a-workaround-tell-you",
+      "search_intent": "workplace-workarounds-process-friction",
+      "asset": "essay_01_workaround.jpg",
+      "destination_url": "https://davidkraase.substack.com/p/what-can-a-workaround-tell-you",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "status": "review",
+      "creative_tool": "chatgpt-image-generation",
+      "source_type": "published_essay"
+    },
+    {
+      "id": "essay-02-burnout",
+      "source_id": "how-we-design-ourselves-into-burnout",
+      "search_intent": "work-overload-small-additions",
+      "asset": "essay_02_burnout.jpg",
+      "destination_url": "https://davidkraase.substack.com/p/one-more-thing",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "status": "review",
+      "creative_tool": "chatgpt-image-generation",
+      "source_type": "published_essay"
+    },
+    {
+      "id": "essay-03-human-judgment-ai",
+      "source_id": "do-people-still-need-people",
+      "search_intent": "human-judgment-ai-assisted-work",
+      "asset": "essay_03_human_judgment.jpg",
+      "destination_url": "https://davidkraase.substack.com/p/do-people-still-need-people-ai",
+      "board_service_id": "1083467691545125925",
+      "editorial_approved": false,
+      "status": "review",
+      "creative_tool": "chatgpt-image-generation",
+      "source_type": "published_essay"
     }
   ]
 }
