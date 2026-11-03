@@ -1,0 +1,20 @@
+name: Audit published Pinterest CTA links
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'campaign/pins.json'
+      - 'scripts/audit_cta.py'
+      - '.github/workflows/audit-cta.yml'
+  schedule:
+    - cron: '45 13 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit CTA destinations and tracking
+        run: python3 scripts/audit_cta.py
