@@ -118,14 +118,19 @@
       "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
       "board_service_id": "1083467691545125927",
       "editorial_approved": true,
-      "status": "approved",
+      "status": "scheduled",
       "visual_qa_approved": true,
       "title": "A Practical Workbook for Examining a Handoff",
       "text": "Explore a guided diagnostic for one decision or handoff, with a worked example and space to record your answers. Read the overview for the package contents and access options.",
       "alt_text": "Cream-and-green graphic headed A Practical Workbook for One Handoff. The Knowledge Governance Diagnostic package lists a fillable workbook, worked example and answer template, with an Explore the Package button.",
       "approval_ref": "Sentinel_96f5bbd2c1688191bbca398f3c99578b",
       "asset_sha256": "a898570151a4c82d2e02dd008387badbcab208a8dce4041037510893a3b900b5",
-      "published_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-05-tools"
+      "published_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-05-tools",
+      "buffer_post_id": "6aebe0d90d0de73ccef6a813",
+      "due_at": "2026-11-05T19:27:00.000Z",
+      "scheduled_image_url": "https://djkraase.github.io/TCE-Pinterest/assets/tce_pin_05_publish.png",
+      "scheduled_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-05-tools",
+      "scheduling_verification": "Buffer get_post status scheduled on 2026-11-05, not yet sent"
     }
   ]
 }
