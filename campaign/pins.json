@@ -118,7 +118,7 @@
       "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
       "board_service_id": "1083467691545125927",
       "editorial_approved": true,
-      "status": "scheduled",
+      "status": "sent",
       "visual_qa_approved": true,
       "title": "A Practical Workbook for Examining a Handoff",
       "text": "Explore a guided diagnostic for one decision or handoff, with a worked example and space to record your answers. Read the overview for the package contents and access options.",
@@ -130,7 +130,9 @@
       "due_at": "2026-11-05T19:27:00.000Z",
       "scheduled_image_url": "https://djkraase.github.io/TCE-Pinterest/assets/tce_pin_05_publish.png",
       "scheduled_destination_url": "https://kraase.gumroad.com/l/kg-diagnostic?utm_source=pinterest&utm_medium=organic_social&utm_campaign=kg_diagnostic&utm_content=pin-05-tools",
-      "scheduling_verification": "Buffer get_post status scheduled on 2026-11-05, not yet sent"
+      "scheduling_verification": "Buffer get_post verified sent on 2026-11-06; sentAt 2026-11-05T19:27:01.938Z; same approved image, board and tracked destination",
+      "sent_at": "2026-11-05T19:27:01.938Z",
+      "pinterest_url": "https://www.pinterest.com/pin/1083467622891913823"
     }
   ]
 }
