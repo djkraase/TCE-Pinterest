@@ -8,8 +8,11 @@ Publishing requires the existing individual editorial, visual and URL gates.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -17,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "campaign" / "creative_specs.json"
+MANIFEST_PATH = ROOT / "campaign" / "pins.json"
 WIDTH, HEIGHT = 1000, 1500
 INK = "#0c2d1d"
 CREAM = "#f5f0e6"
@@ -152,13 +156,66 @@ def render(item: dict, destination: Path) -> Path:
     return output
 
 
+def approved_manifest_items(items: list[dict], manifest_path: Path) -> list[tuple[dict, str]]:
+    """Select only separately reviewed Pins; never infer approval from creative specs."""
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if data.get("schema_version") != 1 or not isinstance(data.get("pins"), list):
+        raise SpecError("Expected a version 1 publication manifest with pins array")
+    records = {pin.get("id"): pin for pin in data["pins"] if isinstance(pin, dict)}
+    approved = []
+    for item in items:
+        record = records.get(item["id"])
+        if not record or record.get("status") != "approved":
+            continue
+        if record.get("editorial_approved") is not True or record.get("visual_qa_approved") is not True:
+            raise SpecError(f"{item['id']}: approved status lacks explicit review gates")
+        if record.get("asset") != item["asset"] or not record.get("approval_ref"):
+            raise SpecError(f"{item['id']}: approved asset or approval reference is missing")
+        expected = record.get("asset_sha256", "")
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise SpecError(f"{item['id']}: approved asset digest is invalid")
+        approved.append((item, expected))
+    return approved
+
+
+def host_approved(items: list[dict], manifest_path: Path, destination: Path) -> list[Path]:
+    """Publish files only if their bytes match the owner-approved preview digest."""
+    approved = approved_manifest_items(items, manifest_path)
+    if not approved:
+        return []
+    outputs = []
+    with tempfile.TemporaryDirectory(prefix="tce-pin-review-") as folder:
+        for item, expected in approved:
+            preview = render(item, Path(folder))
+            if hashlib.sha256(preview.read_bytes()).hexdigest() != expected:
+                raise SpecError(f"{item['id']}: artwork differs from approved digest")
+            output = destination / item["asset"]
+            if output.exists() and hashlib.sha256(output.read_bytes()).hexdigest() != expected:
+                raise SpecError(f"{item['id']}: destination contains different artwork")
+            destination.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(preview, output)
+            outputs.append(output)
+    return outputs
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, default=SPEC_PATH)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "assets")
     parser.add_argument("--check", action="store_true", help="Validate only, do not write images")
+    parser.add_argument("--approved-only", action="store_true", help="Host only separately approved and digest-verified assets")
+    parser.add_argument("--manifest", type=Path, default=MANIFEST_PATH)
     args = parser.parse_args()
     items = read_specs(args.spec)
+    if args.approved_only:
+        if args.check:
+            parser.error("--approved-only and --check are mutually exclusive")
+        outputs = host_approved(items, args.manifest, args.output_dir)
+        if not outputs:
+            print("NO_APPROVED_ASSETS: nothing hosted")
+        for output in outputs:
+            print(f"APPROVED_ASSET: {output}")
+        return
     for item in items:
         if args.check:
             print(f"VALID {item['id']}: {item['asset']}")
