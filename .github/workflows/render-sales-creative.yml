@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'campaign/creative_specs.json'
+      - 'campaign/pins.json'
   workflow_dispatch:
 permissions:
   contents: read
@@ -49,8 +50,8 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install 'Pillow==11.3.0'
-      - name: Generate approved-spec assets in Pages directory
-        run: .venv/bin/python scripts/render_sales_pin.py --output-dir assets
+      - name: Generate only separately approved and digest-matched images
+        run: .venv/bin/python scripts/render_sales_pin.py --approved-only --output-dir assets
       - name: Commit only generated artwork
         run: |
           git config user.name "github-actions[bot]"
