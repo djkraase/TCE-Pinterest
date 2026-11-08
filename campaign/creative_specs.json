@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "id": "pin-09-reopened-decisions",
+      "asset": "tce_pin_09_publish.png",
+      "eyebrow": "Decision handoffs",
+      "headline": "Why Does This Decision Keep Coming Back?",
+      "support": "Use a guided workbook to examine the missing context before choosing another fix.",
+      "button": "Explore the workbook",
+      "editorial_approved": false
+    },
+    {
+      "id": "pin-10-handoff-gaps",
+      "asset": "tce_pin_10_publish.png",
+      "eyebrow": "Knowledge transfer",
+      "headline": "What Gets Lost During a Handoff?",
+      "support": "Follow one real breakdown through the information, decisions and responsibilities behind it.",
+      "button": "See the diagnostic",
+      "editorial_approved": false
+    },
+    {
+      "id": "pin-11-workaround",
+      "asset": "tce_pin_11_publish.png",
+      "eyebrow": "Workflow improvement",
+      "headline": "Before You Fix the Workaround, Examine the Work",
+      "support": "A structured inquiry can help you identify what the workaround is compensating for.",
+      "button": "Explore the workbook",
+      "editorial_approved": false
+    }
+  ]
+}
