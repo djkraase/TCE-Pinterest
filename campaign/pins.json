@@ -133,6 +133,51 @@
       "scheduling_verification": "Buffer get_post verified sent on 2026-11-06; sentAt 2026-11-05T19:27:01.938Z; same approved image, board and tracked destination",
       "sent_at": "2026-11-05T19:27:01.938Z",
       "pinterest_url": "https://www.pinterest.com/pin/1083467622891913823"
+    },
+    {
+      "id": "pin-09-reopened-decisions",
+      "source_id": "kg-diagnostic",
+      "search_intent": "reopened-decisions-workbook",
+      "asset": "tce_pin_09_publish.png",
+      "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "visual_qa_approved": false,
+      "status": "review",
+      "title": "Why Does This Decision Keep Coming Back?",
+      "text": "If a decision is repeatedly reopened, check what reasoning, ownership or evidence is missing. The Knowledge Governance Diagnostic is a self-guided workbook for examining one recurring breakdown before choosing a fix.",
+      "alt_text": "Cream-and-dark-green Context Engine graphic asking Why Does This Decision Keep Coming Back? and inviting the reader to explore the Knowledge Governance Diagnostic workbook.",
+      "approval_note": "Render script creates a draft image; separate owner editorial and visual approval required before any Buffer scheduling"
+    },
+    {
+      "id": "pin-10-handoff-gaps",
+      "source_id": "kg-diagnostic",
+      "search_intent": "knowledge-transfer-handoff-gaps",
+      "asset": "tce_pin_10_publish.png",
+      "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "visual_qa_approved": false,
+      "status": "review",
+      "title": "What Gets Lost During a Handoff?",
+      "text": "Information may exist but fail to travel with the work. Use a structured diagnostic to examine one handoff, compare perspectives and identify what remains uncertain.",
+      "alt_text": "Cream-and-dark-green Context Engine graphic headed What Gets Lost During a Handoff? with a link invitation to the Knowledge Governance Diagnostic.",
+      "approval_note": "Render script creates a draft image; separate owner editorial and visual approval required before any Buffer scheduling"
+    },
+    {
+      "id": "pin-11-workaround",
+      "source_id": "kg-diagnostic",
+      "search_intent": "process-workaround-root-context",
+      "asset": "tce_pin_11_publish.png",
+      "destination_url": "https://kraase.gumroad.com/l/kg-diagnostic",
+      "board_service_id": "1083467691545125927",
+      "editorial_approved": false,
+      "visual_qa_approved": false,
+      "status": "review",
+      "title": "Before You Fix the Workaround, Examine the Work",
+      "text": "Workarounds can show where the expected process and actual work diverge. This guided workbook helps examine one recurring breakdown and propose a bounded next experiment.",
+      "alt_text": "Cream-and-dark-green Context Engine graphic headed Before You Fix the Workaround, Examine the Work, promoting the Knowledge Governance Diagnostic workbook.",
+      "approval_note": "Render script creates a draft image; separate owner editorial and visual approval required before any Buffer scheduling"
     }
   ]
 }
